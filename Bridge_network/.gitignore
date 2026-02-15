@@ -60,3 +60,5 @@ profiling/
 # Working docs (not for repo)
 Agent.md
 GPU_VALIDATION_CHECKLIST.md
+CLAUDE.md
+CONTINUITY.md
