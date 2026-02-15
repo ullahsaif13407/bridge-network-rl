@@ -2,7 +2,7 @@
 
 This folder contains **clean, training-ready copies** of the off-policy DDMAC-CTDE implementation, based on the tested profiling variants, but **without** any profiling harness or artifact-specific wiring.
 
-Each subfolder is self-contained (same layout as `GPU_optimization/DDMAC_CTDE_no_param_sharing/Non_intact_state/`) and can be run directly.
+Each subfolder is self-contained and can be run directly.
 
 ## Folder Layout
 

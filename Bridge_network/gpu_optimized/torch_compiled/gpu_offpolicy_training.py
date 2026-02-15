@@ -26,11 +26,13 @@ from gpu_policy_network import BridgeNetworkActorCritic
 from gpu_cost_module import GPUCostModule
 from gpu_budget_constraints import GPUBudgetConstraint, BudgetStrategy
 
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '.env'))
+
 try:
     import wandb  # type: ignore
 except Exception:  # pragma: no cover - optional dependency
     wandb = None
-os.environ['WANDB_API_KEY'] = '031530f1a95b9a776ae259d77727fcc8e1595c61'
 
 # Constants
 NCOMP_PAV = 85

@@ -7,6 +7,9 @@ scipy>=1.10.0
 tensorflow>=2.13.0
 keras>=2.13.0
 
+# Environment / Config
+python-dotenv>=1.0.0
+
 # Utilities
 matplotlib>=3.7.0
 pandas>=2.0.0

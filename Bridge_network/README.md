@@ -10,7 +10,7 @@ This project implements **Decentralized Multi-Agent Actor-Critic (DDMAC)** with 
 
 - **Off-policy learning** with replay buffer and importance sampling for sample efficiency
 - **Constrained RL** via Lagrangian multipliers with 6 constraint types
-- **Fully vectorized GPU environment** — 128 parallel rollouts of environments with no Python loops
+- **Fully vectorized GPU environment** — 128 parallel rollouts with no Python loops
 - **Memory-efficient** belief state representation (~50-100x reduction vs naive replication)
 - **torch.compile + fused Adam** optimizations for faster training
 - **Weights & Biases** integration for experiment tracking
@@ -29,17 +29,14 @@ Each of the 96 components selects from **10 discrete actions** ranging from "do 
 ## Project Structure
 
 ```
-Bridge_network/
-├── gpu_optimized/                    # Production-ready GPU implementations
-│   ├── torch_compiled/               # torch.compile optimization
-│   ├── torch_compiled_fused_adam/     # torch.compile + fused Adam (recommended)
-│   └── torch_compiled_buffer_log_prob/# torch.compile + compact log-prob buffer
-├── dependency_files/                 # Static data (transition matrices, costs, initial states)
-├── DDMAC_CTDE_VDOT/                  # Original CPU/Keras baseline (reference only)
-├── Test_folder/                      # Tests and experimental scripts
-├── GPU_optimization/                 # Experimental optimization variants
-├── profiling/                        # Profiling harness and isolated variant benchmarks
-├── train_gpu.sh                      # Shell script launcher
+bridge-network-rl/
+├── gpu_optimized/                        # GPU training implementations
+│   ├── torch_compiled/                   # torch.compile optimization
+│   ├── torch_compiled_fused_adam/         # torch.compile + fused Adam (recommended)
+│   └── torch_compiled_buffer_log_prob/   # torch.compile + compact log-prob buffer
+├── dependency_files/                     # Static data (transition matrices, costs, initial states)
+├── .env                                  # WANDB_API_KEY (create locally, not committed)
+├── train_gpu.sh                          # Shell script launcher
 └── requirements.txt
 ```
 
@@ -52,7 +49,7 @@ Each variant in `gpu_optimized/` is self-contained with 6 modules:
 | `gpu_environment_optimized.py` | Vectorized GPU environment with Bayesian belief updates |
 | `gpu_cost_module.py` | Action, observation, delay, and risk cost computation |
 | `gpu_budget_constraints.py` | Budget allocation strategies (5 options) |
-| `Network_data.py` | Data loading from `dependency_files/` |
+| `Network_data.py` | Network constants and data loading |
 
 ## Getting Started
 
@@ -65,16 +62,24 @@ Each variant in `gpu_optimized/` is self-contained with 6 modules:
 ### Installation
 
 ```bash
-git clone <repo-url>
-cd Bridge_network
+git clone git@github.com:ullahsaif13407/bridge-network-rl.git
+cd bridge-network-rl
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### Environment Setup
+
+Create a `.env` file in the project root for Weights & Biases:
+
+```bash
+echo "WANDB_API_KEY=your_key_here" > .env
+```
+
 ### Training
 
-Run from inside a variant folder (recommended):
+Run from inside a variant folder:
 
 ```bash
 cd gpu_optimized/torch_compiled_fused_adam
@@ -114,13 +119,6 @@ python3 gpu_offpolicy_training.py --resume checkpoints_offpolicy/checkpoint_ep10
 | `--lr-schedule` | `cosine` | LR schedule: `none`, `cosine`, or `linear` |
 | `--lr-min-ratio` | 0.01 | Minimum LR ratio vs initial LR |
 | `--lr-step-every` | 1000 | Step LR scheduler every N update() calls |
-
-### Testing
-
-```bash
-pytest Test_folder/test_gpu_training.py -v
-pytest Test_folder/test_legacy_vs_gpu.py -v
-```
 
 ## GPU Optimization Variants
 
@@ -167,24 +165,8 @@ Static data in `dependency_files/`:
 | `link_lengths.mat` | Network link lengths |
 | `Dlay_Cost.npy` | Delay cost arrays |
 | `Total_action_duration.npy` | Maintenance action durations |
-| `*.txt` | Initial belief state definitions |
-
-## Profiling
-
-To benchmark optimization variants independently:
-
-```bash
-# Profile a single variant
-python3 profiling/profile_offpolicy_ddmac_ctde.py --code-dir profiling/baseline --device cuda:0
-
-# Run all variants and generate comparison CSV
-python3 profiling/run_all_variants.py --device cuda:0
-
-# Longer run for stable measurements
-python3 profiling/run_all_variants.py --device cuda:0 --warmup-iters 5 --iters 50 --updates-per-iter 4 --no-profiler
-```
-
-Results are saved to `profiling/results/summary.csv`.
+| `current_*_excellent.txt` | Initial condition state definitions |
+| `Current_age.txt` | Initial component ages |
 
 ## References
 

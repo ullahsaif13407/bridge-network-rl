@@ -10,6 +10,9 @@ dist/
 .venv/
 .venv_profile/
 
+# Secrets
+.env
+
 # Editor / OS files
 .vscode/
 .idea/
