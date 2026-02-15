@@ -1,0 +1,59 @@
+# Python cache / build artifacts
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+.venv/
+.venv_profile/
+
+# Editor / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Model / checkpoint files
+*.pt
+*.pth
+*.ckpt
+*.npz
+checkpoints*/
+**/checkpoints*/
+
+# Legacy data directories (large, replaced by dependency_files/)
+DDMAC_CTDE_VDOT/
+GPU_optimization/
+Test_folder/
+
+# Training outputs and logs
+wandb/
+**/wandb/
+logs*/
+**/logs*/
+gpu_logs/
+**/gpu_logs/
+
+# Results directories (large output data)
+Results*/
+**/Results*/
+
+# Term costs output
+Term_costs/
+**/Term_costs/
+
+# Large data files (outputs) - exclude everywhere except dependency_files/
+Dlay_Cost.npy
+Total_action_duration.npy
+!dependency_files/Dlay_Cost.npy
+!dependency_files/Total_action_duration.npy
+
+# Profiling directory
+profiling/
+
+# Working docs (not for repo)
+Agent.md
+GPU_VALIDATION_CHECKLIST.md
