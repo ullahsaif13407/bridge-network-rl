@@ -111,7 +111,7 @@ python3 gpu_offpolicy_training.py --resume checkpoints_offpolicy/checkpoint_ep10
 | `--resume` | None | Path to checkpoint file to resume from |
 | `--checkpoint-dir` | `./checkpoints_offpolicy` | Directory for saving checkpoints |
 | `--wandb` | off | Enable Weights & Biases logging |
-| `--wandb-project` | `BridgeNetwork_GPU_OffPolicy` | W&B project name |
+| `--wandb-project` | `Bridge_network_rl_comparision` | W&B project name |
 | `--wandb-entity` | None | W&B entity/team |
 | `--wandb-name` | None | W&B run name |
 | `--wandb-resume` | off | Allow resuming a W&B run |
