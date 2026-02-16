@@ -152,13 +152,13 @@ Algorithm-specific metrics:
 
 ## Hardware
 
-- Tested on NVIDIA A100 / H100 (16+ GB VRAM)
+- Tested on NVIDIA 5080 (6+ GB VRAM)
 - All 3 algorithms can run in parallel on a single GPU
 - PyTorch 2.0+ with `torch.compile` and fused Adam
 
 ## References
 
-- **DDMAC-CTDE**: Decentralized Multi-Agent Actor-Critic with Centralized Training, Decentralized Execution
+- **DDMAC-CTDE**: Saifullah et al., ["Multi-agent deep reinforcement learning with centralized training and decentralized execution for transportation infrastructure management"](https://arxiv.org/abs/2401.12455) (2024)
 - **PPO**: Schulman et al., "Proximal Policy Optimization Algorithms" (2017)
 - **GRPO**: Shao et al., "DeepSeekMath: Pushing the Limits of Mathematical Reasoning" (2024)
 - **Lagrangian Relaxation**: Constrained RL via dual optimization of safety constraints
