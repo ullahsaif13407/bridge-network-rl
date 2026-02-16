@@ -102,14 +102,16 @@ class BridgeNetworkActor(nn.Module):
     - Individual policy heads (can be shared across types for efficiency)
     """
     
-    def __init__(self, hidden_dim: int = 128, shared: bool = True):
+    def __init__(self, hidden_dim: int = 128, shared: bool = True, use_budget: bool = True):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.shared = shared
-        
-        # Input dimensions (budget removed)
-        self.pav_input_dim = NSTCOMP_IRI + NSTCOMP_CCI + 3  # 5+6+3 = 14 (IRI + CCI + extra + age + time)
-        self.deck_input_dim = NSTCOMP_DECK + 2  # 7+2 = 9 (deck + age + time)
+        self.use_budget = use_budget
+
+        # Input dimensions: +1 for yt_ratio when use_budget=True
+        budget_dim = 1 if use_budget else 0
+        self.pav_input_dim = NSTCOMP_IRI + NSTCOMP_CCI + 3 + budget_dim   # 14 or 15
+        self.deck_input_dim = NSTCOMP_DECK + 2 + budget_dim                # 9 or 10
         
         if shared:
             # Shared encoders per type
@@ -141,31 +143,38 @@ class BridgeNetworkActor(nn.Module):
         extra_state: torch.Tensor,    # (batch, 85)
         age: torch.Tensor,            # (batch, 96)
         time_ratio: torch.Tensor,     # (batch, 1)
+        yt_ratio: Optional[torch.Tensor] = None,  # (batch, 1) budget spent ratio
     ) -> torch.Tensor:
         """
         Forward pass returning action logits for all components.
-        
+
         Returns:
             action_logits: (batch, 96, 10)
         """
         batch = state_IRI.shape[0]
         device = state_IRI.device
-        
-        # Prepare pavement inputs: (batch, 85, 14)
-        pav_input = torch.cat([
+
+        # Prepare pavement inputs: (batch, 85, 14 or 15)
+        pav_parts = [
             state_IRI,  # (batch, 85, 5)
             state_CCI,  # (batch, 85, 6)
             extra_state.unsqueeze(-1),  # (batch, 85, 1)
             age[:, :NCOMP_PAV].unsqueeze(-1) / 20.0,  # (batch, 85, 1)
             time_ratio.unsqueeze(1).expand(-1, NCOMP_PAV, -1),  # (batch, 85, 1)
-        ], dim=-1)
-        
-        # Prepare deck inputs: (batch, 11, 9)
-        deck_input = torch.cat([
+        ]
+        if self.use_budget and yt_ratio is not None:
+            pav_parts.append(yt_ratio.unsqueeze(1).expand(-1, NCOMP_PAV, -1))  # (batch, 85, 1)
+        pav_input = torch.cat(pav_parts, dim=-1)
+
+        # Prepare deck inputs: (batch, 11, 9 or 10)
+        deck_parts = [
             state_deck,  # (batch, 11, 7)
             age[:, NCOMP_PAV:].unsqueeze(-1) / 20.0,  # (batch, 11, 1)
             time_ratio.unsqueeze(1).expand(-1, NCOMP_DECK, -1),  # (batch, 11, 1)
-        ], dim=-1)
+        ]
+        if self.use_budget and yt_ratio is not None:
+            deck_parts.append(yt_ratio.unsqueeze(1).expand(-1, NCOMP_DECK, -1))  # (batch, 11, 1)
+        deck_input = torch.cat(deck_parts, dim=-1)
         
         if self.shared:
             # Shared processing
@@ -199,17 +208,18 @@ class BridgeNetworkActor(nn.Module):
         extra_state: torch.Tensor,
         age: torch.Tensor,
         time_ratio: torch.Tensor,
+        yt_ratio: Optional[torch.Tensor] = None,
         deterministic: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Sample actions from policy.
-        
+
         Returns:
             actions: (batch, 96) - sampled actions
             log_probs: (batch, 96) - log probability of sampled actions
         """
-        logits = self.forward(state_IRI, state_CCI, state_deck, extra_state, 
-                             age, time_ratio)
+        logits = self.forward(state_IRI, state_CCI, state_deck, extra_state,
+                             age, time_ratio, yt_ratio)
         
         dist = torch.distributions.Categorical(logits=logits)
         
@@ -230,17 +240,18 @@ class BridgeNetworkActor(nn.Module):
         extra_state: torch.Tensor,
         age: torch.Tensor,
         time_ratio: torch.Tensor,
-        actions: torch.Tensor
+        yt_ratio: Optional[torch.Tensor] = None,
+        actions: torch.Tensor = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Evaluate log probability and entropy of actions.
-        
+
         Returns:
             log_probs: (batch, 96)
             entropy: (batch, 96)
         """
         logits = self.forward(state_IRI, state_CCI, state_deck, extra_state,
-                             age, time_ratio)
+                             age, time_ratio, yt_ratio)
         
         dist = torch.distributions.Categorical(logits=logits)
         log_probs = dist.log_prob(actions)
@@ -262,21 +273,25 @@ class BridgeNetworkCritic(nn.Module):
     - Extra state: (batch, 85) -> 85
     - Age: (batch, 96) -> 96
     - Time ratio: (batch, 1) -> 1
-    Total: 1194
+    - yt_ratio: (batch, 1) -> 1 (only when use_budget=True)
+    Total: 1194 (no budget) or 1195 (with budget)
     """
-    
-    def __init__(self, hidden_dim: int = 512):
+
+    def __init__(self, hidden_dim: int = 512, use_budget: bool = True):
         super().__init__()
-        
+        self.use_budget = use_budget
+
         # Calculate input dimension
+        budget_dim = 1 if use_budget else 0
         self.input_dim = (
             NCOMP_PAV * NSTCOMP_IRI +  # 425
             NCOMP_PAV * NSTCOMP_CCI +  # 510
             NCOMP_DECK * NSTCOMP_DECK +  # 77
             NCOMP_PAV +  # 85
             TOT_COMP +  # 96
-            1  # time
-        )  # Total: 1194
+            1 +  # time
+            budget_dim  # yt_ratio (0 or 1)
+        )  # Total: 1194 or 1195
         
         self.net = nn.Sequential(
             nn.Linear(self.input_dim, hidden_dim),
@@ -294,25 +309,29 @@ class BridgeNetworkCritic(nn.Module):
         extra_state: torch.Tensor,
         age: torch.Tensor,
         time_ratio: torch.Tensor,
+        yt_ratio: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Forward pass returning state value.
-        
+
         Returns:
             value: (batch, 1)
         """
         batch = state_IRI.shape[0]
-        
+
         # Flatten and concatenate
-        x = torch.cat([
+        parts = [
             state_IRI.view(batch, -1),
             state_CCI.view(batch, -1),
             state_deck.view(batch, -1),
             extra_state,
             age / 20.0,
             time_ratio,
-        ], dim=-1)
-        
+        ]
+        if self.use_budget and yt_ratio is not None:
+            parts.append(yt_ratio)
+        x = torch.cat(parts, dim=-1)
+
         return self.net(x)
 
 
@@ -321,10 +340,10 @@ class BridgeNetworkActorCritic(nn.Module):
     Combined Actor-Critic network for PPO training.
     """
     
-    def __init__(self, actor_hidden: int = 128, critic_hidden: int = 512, shared_actor: bool = True):
+    def __init__(self, actor_hidden: int = 128, critic_hidden: int = 512, shared_actor: bool = True, use_budget: bool = True):
         super().__init__()
-        self.actor = BridgeNetworkActor(hidden_dim=actor_hidden, shared=shared_actor)
-        self.critic = BridgeNetworkCritic(hidden_dim=critic_hidden)
+        self.actor = BridgeNetworkActor(hidden_dim=actor_hidden, shared=shared_actor, use_budget=use_budget)
+        self.critic = BridgeNetworkCritic(hidden_dim=critic_hidden, use_budget=use_budget)
     
     def forward(
         self,
@@ -334,6 +353,7 @@ class BridgeNetworkActorCritic(nn.Module):
         extra_state: torch.Tensor,
         age: torch.Tensor,
         time_ratio: torch.Tensor,
+        yt_ratio: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Returns:
@@ -341,11 +361,11 @@ class BridgeNetworkActorCritic(nn.Module):
             values: (batch, 1)
         """
         action_logits = self.actor(state_IRI, state_CCI, state_deck, extra_state,
-                                   age, time_ratio)
+                                   age, time_ratio, yt_ratio)
         values = self.critic(state_IRI, state_CCI, state_deck, extra_state,
-                            age, time_ratio)
+                            age, time_ratio, yt_ratio)
         return action_logits, values
-    
+
     def get_action_and_value(
         self,
         state_IRI: torch.Tensor,
@@ -354,11 +374,12 @@ class BridgeNetworkActorCritic(nn.Module):
         extra_state: torch.Tensor,
         age: torch.Tensor,
         time_ratio: torch.Tensor,
+        yt_ratio: Optional[torch.Tensor] = None,
         deterministic: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Get actions, log probs, entropy, and value in one forward pass.
-        
+
         Returns:
             actions: (batch, 96)
             log_probs: (batch, 96)
@@ -367,7 +388,7 @@ class BridgeNetworkActorCritic(nn.Module):
         """
         action_logits, values = self.forward(
             state_IRI, state_CCI, state_deck, extra_state,
-            age, time_ratio
+            age, time_ratio, yt_ratio
         )
         
         dist = torch.distributions.Categorical(logits=action_logits)
@@ -457,86 +478,112 @@ class LagrangianMultipliers:
 # ============================================================================
 
 def test_policy_network():
-    """Test the policy network architecture"""
+    """Test the policy network architecture with both use_budget=True and False"""
     print("=" * 70)
     print("POLICY NETWORK TEST")
     print("=" * 70)
-    
+
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     batch_size = 32
-    
-    # Create networks
-    actor_critic = BridgeNetworkActorCritic(
-        actor_hidden=128,
-        critic_hidden=512,
-        shared_actor=True
-    ).to(device)
-    
-    # Count parameters
-    actor_params = sum(p.numel() for p in actor_critic.actor.parameters())
-    critic_params = sum(p.numel() for p in actor_critic.critic.parameters())
-    print(f"\nActor parameters: {actor_params:,}")
-    print(f"Critic parameters: {critic_params:,}")
-    print(f"Total parameters: {actor_params + critic_params:,}")
-    
-    # Create dummy inputs
+
+    for use_budget in [True, False]:
+        print(f"\n{'='*50}")
+        print(f"  use_budget={use_budget}")
+        print(f"{'='*50}")
+
+        # Create networks
+        actor_critic = BridgeNetworkActorCritic(
+            actor_hidden=128,
+            critic_hidden=512,
+            shared_actor=True,
+            use_budget=use_budget,
+        ).to(device)
+
+        # Count parameters
+        actor_params = sum(p.numel() for p in actor_critic.actor.parameters())
+        critic_params = sum(p.numel() for p in actor_critic.critic.parameters())
+        print(f"  Actor parameters: {actor_params:,}")
+        print(f"  Critic parameters: {critic_params:,}")
+        print(f"  pav_input_dim: {actor_critic.actor.pav_input_dim}")
+        print(f"  deck_input_dim: {actor_critic.actor.deck_input_dim}")
+        print(f"  critic input_dim: {actor_critic.critic.input_dim}")
+
+        # Create dummy inputs
+        state_IRI = torch.rand(batch_size, NCOMP_PAV, NSTCOMP_IRI, device=device)
+        state_CCI = torch.rand(batch_size, NCOMP_PAV, NSTCOMP_CCI, device=device)
+        state_deck = torch.rand(batch_size, NCOMP_DECK, NSTCOMP_DECK, device=device)
+        extra_state = torch.zeros(batch_size, NCOMP_PAV, device=device)
+        age = torch.randint(0, 20, (batch_size, TOT_COMP), device=device).float()
+        time_ratio = torch.rand(batch_size, 1, device=device)
+        yt_ratio = torch.rand(batch_size, 1, device=device) if use_budget else None
+
+        # Test forward pass
+        print("\n  --- Forward Pass Test ---")
+        actions, log_probs, entropy, values = actor_critic.get_action_and_value(
+            state_IRI, state_CCI, state_deck, extra_state,
+            age, time_ratio, yt_ratio
+        )
+
+        print(f"  Actions shape: {actions.shape}")  # (32, 96)
+        print(f"  Log probs shape: {log_probs.shape}")  # (32, 96)
+        print(f"  Entropy shape: {entropy.shape}")  # (32, 96)
+        print(f"  Values shape: {values.shape}")  # (32, 1)
+
+        # Test evaluate_actions
+        log_p, ent = actor_critic.actor.evaluate_actions(
+            state_IRI, state_CCI, state_deck, extra_state,
+            age, time_ratio, yt_ratio, actions
+        )
+        assert log_p.shape == (batch_size, TOT_COMP), f"Bad log_p shape: {log_p.shape}"
+        assert ent.shape == (batch_size, TOT_COMP), f"Bad entropy shape: {ent.shape}"
+        print(f"  evaluate_actions OK")
+
+    # Test inference speed (use_budget=True only)
+    print("\n--- Inference Speed Test (use_budget=True) ---")
+    import time
+
+    actor_critic = BridgeNetworkActorCritic(shared_actor=True, use_budget=True).to(device)
     state_IRI = torch.rand(batch_size, NCOMP_PAV, NSTCOMP_IRI, device=device)
     state_CCI = torch.rand(batch_size, NCOMP_PAV, NSTCOMP_CCI, device=device)
     state_deck = torch.rand(batch_size, NCOMP_DECK, NSTCOMP_DECK, device=device)
     extra_state = torch.zeros(batch_size, NCOMP_PAV, device=device)
     age = torch.randint(0, 20, (batch_size, TOT_COMP), device=device).float()
-    budget_ratio = torch.rand(batch_size, 1, device=device)
     time_ratio = torch.rand(batch_size, 1, device=device)
-    
-    # Test forward pass
-    print("\n--- Forward Pass Test ---")
-    actions, log_probs, entropy, values = actor_critic.get_action_and_value(
-        state_IRI, state_CCI, state_deck, extra_state,
-        age, budget_ratio, time_ratio
-    )
-    
-    print(f"Actions shape: {actions.shape}")  # (32, 96)
-    print(f"Log probs shape: {log_probs.shape}")  # (32, 96)
-    print(f"Entropy shape: {entropy.shape}")  # (32, 96)
-    print(f"Values shape: {values.shape}")  # (32, 1)
-    
-    # Test inference speed
-    print("\n--- Inference Speed Test ---")
-    import time
-    
+    yt_ratio = torch.rand(batch_size, 1, device=device)
+
     n_iters = 100
     torch.cuda.synchronize() if device.startswith('cuda') else None
-    
+
     start = time.time()
     for _ in range(n_iters):
         actions, log_probs, entropy, values = actor_critic.get_action_and_value(
             state_IRI, state_CCI, state_deck, extra_state,
-            age, budget_ratio, time_ratio
+            age, time_ratio, yt_ratio
         )
     torch.cuda.synchronize() if device.startswith('cuda') else None
     elapsed = time.time() - start
-    
+
     print(f"Time per batch: {elapsed/n_iters*1000:.2f} ms")
     print(f"Throughput: {batch_size * n_iters / elapsed:.0f} samples/sec")
-    
+
     # Test Lagrangian multipliers
     print("\n--- Lagrangian Multipliers Test ---")
     lagrangian = LagrangianMultipliers(device=device)
-    
+
     # Simulate constraint violations
     violations = torch.tensor([6, 1, 20, 12, 30, 8], dtype=torch.float32, device=device)
-    
+
     penalty_before = lagrangian.get_penalty(violations)
     print(f"Initial penalty: {penalty_before.item():.4f}")
-    
+
     for _ in range(100):
         lagrangian.update(violations)
-    
+
     penalty_after = lagrangian.get_penalty(violations)
     print(f"Penalty after 100 updates: {penalty_after.item():.4f}")
     print(f"Lambda values: {lagrangian.lambdas.cpu().numpy()}")
-    
-    print("\n✓ All tests passed!")
+
+    print("\nAll tests passed!")
     return True
 
 

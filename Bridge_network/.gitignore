@@ -15,6 +15,7 @@ dist/
 
 # Editor / OS files
 .vscode/
+.claude/
 .idea/
 .DS_Store
 Thumbs.db
@@ -62,3 +63,4 @@ Agent.md
 GPU_VALIDATION_CHECKLIST.md
 CLAUDE.md
 CONTINUITY.md
+tough_questions.md

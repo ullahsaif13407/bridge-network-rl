@@ -857,11 +857,12 @@ if __name__ == '__main__':
                         help='Min LR ratio vs initial LR (e.g. 0.1)')
     parser.add_argument('--lr-step-every', type=int, default=None,
                         help='Step LR scheduler every N update() calls (staircase if >1)')
+    parser.add_argument('--device', type=str, default=None, help='Device (e.g. cuda:0, cpu)')
     parser.add_argument('--no-budget', action='store_true',
                         help='Disable budget constraints (infinite budget, no yt_ratio input)')
     args = parser.parse_args()
-    
-    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+
+    device = args.device or ('cuda:0' if torch.cuda.is_available() else 'cpu')
     cfg = OffPolicyConfig(device=device)
     
     # Override checkpoint directory if provided
