@@ -1,6 +1,6 @@
 # Bridge Network RL — Multi-Algorithm Comparison
 
-GPU-accelerated multi-agent reinforcement learning for optimizing maintenance decisions across a 96-component highway bridge network. Compares **Off-Policy Actor-Critic**, **PPO**, and **GRPO** under identical environments and constraints.
+GPU-accelerated multi-agent reinforcement learning for optimizing maintenance decisions across a 96-component highway bridge network. Compares **DDMAC-CTDE**, **PPO**, and **GRPO** under identical environments and constraints.
 
 ## Problem
 
@@ -14,7 +14,7 @@ A highway network of **85 pavement sections + 11 bridge decks** must be maintain
 
 | Algorithm | Advantage Estimation | Critic | Grad Steps/Episode | Key Property |
 |-----------|---------------------|--------|-------------------|--------------|
-| **Off-Policy** | TD(0) + importance sampling | Yes (~875K params) | ~1 (updates every 4 eps) | Sample-efficient via replay buffer |
+| **DDMAC-CTDE** | TD(0) + importance sampling | Yes (~875K params) | ~1 (updates every 4 eps) | Sample-efficient via replay buffer |
 | **PPO** | GAE (λ=0.95, per-step) | Yes (~875K params) | 16 (4 epochs × 4 minibatches) | Best per-step credit assignment |
 | **GRPO** | Group-relative (episode-level) | No (critic-free) | 16 (4 epochs × 4 minibatches) | Simplest — no value function needed |
 
@@ -25,14 +25,14 @@ All share the same actor architecture (~70K params): shared encoders per compone
 ```
 Bridge_network/
 ├── Trainers/
-│   ├── torch_compiled_fused_adam/         # Off-policy (recommended variant)
+│   ├── torch_compiled_fused_adam/         # DDMAC-CTDE (recommended variant)
 │   │   └── gpu_offpolicy_training.py
 │   ├── ppo_torch_compiled_fused_adam/     # PPO
 │   │   └── gpu_ppo_training.py
 │   ├── grpo_torch_compiled_fused_adam/    # GRPO
 │   │   └── gpu_grpo_training.py
-│   ├── torch_compiled/                   # Off-policy (base torch.compile)
-│   ├── torch_compiled_buffer_log_prob/   # Off-policy (compact buffer)
+│   ├── torch_compiled/                   # DDMAC-CTDE (base torch.compile)
+│   ├── torch_compiled_buffer_log_prob/   # DDMAC-CTDE (compact buffer)
 │   └── test_cost_parity.py              # Verify cost parity across variants
 ├── dependency_files/                     # Transition matrices, costs, initial states
 ├── DDMAC_CTDE_VDOT/                     # Original CPU baseline (Keras/TF)
@@ -69,7 +69,7 @@ echo "WANDB_API_KEY=your_key_here" > .env
 ./run_all.sh cuda:1       # specify device
 ```
 
-Opens a tmux session `rl_train` with 3 panes (off-policy | PPO | GRPO). All log to the same W&B project for direct comparison.
+Opens a tmux session `rl_train` with 3 panes (DDMAC-CTDE | PPO | GRPO). All log to the same W&B project for direct comparison.
 
 - `Ctrl+B` then `D` — detach (training continues)
 - `tmux attach -t rl_train` — reattach
@@ -77,9 +77,9 @@ Opens a tmux session `rl_train` with 3 panes (off-policy | PPO | GRPO). All log 
 ### Run Individually
 
 ```bash
-# Off-policy
+# DDMAC-CTDE
 python3 Trainers/torch_compiled_fused_adam/gpu_offpolicy_training.py \
-    --wandb --wandb-name offpolicy --device cuda:0
+    --wandb --wandb-name ddmac-ctde --device cuda:0
 
 # PPO
 python3 Trainers/ppo_torch_compiled_fused_adam/gpu_ppo_training.py \
@@ -138,7 +138,7 @@ Algorithm-specific metrics:
 
 ### Algorithm-Specific
 
-| Parameter | Off-Policy | PPO | GRPO |
+| Parameter | DDMAC-CTDE | PPO | GRPO |
 |-----------|-----------|-----|------|
 | Critic LR | 1e-3 | 1e-3 | — |
 | Replay buffer | 100k | — | — |
