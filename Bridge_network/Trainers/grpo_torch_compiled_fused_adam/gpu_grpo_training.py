@@ -98,6 +98,7 @@ class GRPOConfig:
     wandb_entity: Optional[str] = None
     wandb_run_name: Optional[str] = None
     wandb_resume: bool = False
+    wandb_run_id: Optional[str] = None
     wandb_log_every: int = 50
 
 
@@ -577,7 +578,7 @@ class GRPOTrainer:
 
     def load_checkpoint(self, checkpoint_path: str) -> Tuple[list, list, list, list, list, int]:
         print(f"Loading checkpoint from {checkpoint_path}")
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
 
         self.actor.load_state_dict(checkpoint['actor_state_dict'])
         self.actor_opt.load_state_dict(checkpoint['actor_optimizer_state_dict'])
@@ -629,7 +630,10 @@ class GRPOTrainer:
             'name': self.cfg.wandb_run_name,
             'config': wandb_config,
         }
-        if self.cfg.wandb_resume:
+        if self.cfg.wandb_run_id:
+            init_kwargs['id'] = self.cfg.wandb_run_id
+            init_kwargs['resume'] = 'must'
+        elif self.cfg.wandb_resume:
             init_kwargs['resume'] = 'allow'
 
         self._wandb_run = wandb.init(**{k: v for k, v in init_kwargs.items() if v is not None})
@@ -736,6 +740,7 @@ if __name__ == '__main__':
     parser.add_argument('--wandb-entity', type=str, default=None, help='W&B entity/team')
     parser.add_argument('--wandb-name', type=str, default=None, help='W&B run name')
     parser.add_argument('--wandb-resume', action='store_true', help='Resume W&B run')
+    parser.add_argument('--wandb-id', type=str, default=None, help='W&B run ID (for exact resume)')
     parser.add_argument('--wandb-log-every', type=int, default=None, help='Log to W&B every N episodes')
     parser.add_argument('--device', type=str, default=None, help='Device (e.g. cuda:0, cpu)')
     parser.add_argument('--lr-schedule', type=str, default=None, choices=['none', 'cosine', 'linear'],
@@ -767,6 +772,8 @@ if __name__ == '__main__':
         cfg.wandb_run_name = args.wandb_name
     if args.wandb_resume:
         cfg.wandb_resume = True
+    if args.wandb_id:
+        cfg.wandb_run_id = args.wandb_id
     if args.wandb_log_every is not None:
         cfg.wandb_log_every = args.wandb_log_every
     if args.lr_schedule is not None:
